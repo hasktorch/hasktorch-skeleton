@@ -1,0 +1,23 @@
+packages:
+    *.cabal
+
+source-repository-package
+    type: git
+    location: https://github.com/hasktorch/hasktorch
+    tag: 291539b82cf23ca246fb67e55bf3689d94258b22
+    --sha256: 0hpk51q2zf3ccv90jlpiqy2g2mld8pimxjkk95rf8xil1piag4kl
+    subdir: libtorch-ffi-helper
+
+source-repository-package
+    type: git
+    location: https://github.com/hasktorch/hasktorch
+    tag: 291539b82cf23ca246fb67e55bf3689d94258b22
+    --sha256: 0hpk51q2zf3ccv90jlpiqy2g2mld8pimxjkk95rf8xil1piag4kl
+    subdir: libtorch-ffi
+
+source-repository-package
+    type: git
+    location: https://github.com/hasktorch/hasktorch
+    tag: 291539b82cf23ca246fb67e55bf3689d94258b22
+    --sha256: 0hpk51q2zf3ccv90jlpiqy2g2mld8pimxjkk95rf8xil1piag4kl
+    subdir: hasktorch
