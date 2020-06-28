@@ -4,20 +4,20 @@ packages:
 source-repository-package
     type: git
     location: https://github.com/hasktorch/hasktorch
-    tag: 291539b82cf23ca246fb67e55bf3689d94258b22
-    --sha256: 0hpk51q2zf3ccv90jlpiqy2g2mld8pimxjkk95rf8xil1piag4kl
+    tag: 8701b0f50446f4f03ca7bd99a91112f0abe03c80
+    --sha256: 1z1shjrjgj50x8lhfirihhfkv2456x2pqklv4a6wdrpz1flhrh2d
     subdir: libtorch-ffi-helper
 
 source-repository-package
     type: git
     location: https://github.com/hasktorch/hasktorch
-    tag: 291539b82cf23ca246fb67e55bf3689d94258b22
-    --sha256: 0hpk51q2zf3ccv90jlpiqy2g2mld8pimxjkk95rf8xil1piag4kl
+    tag: 8701b0f50446f4f03ca7bd99a91112f0abe03c80
+    --sha256: 1z1shjrjgj50x8lhfirihhfkv2456x2pqklv4a6wdrpz1flhrh2d
     subdir: libtorch-ffi
 
 source-repository-package
     type: git
     location: https://github.com/hasktorch/hasktorch
-    tag: 291539b82cf23ca246fb67e55bf3689d94258b22
-    --sha256: 0hpk51q2zf3ccv90jlpiqy2g2mld8pimxjkk95rf8xil1piag4kl
+    tag: 8701b0f50446f4f03ca7bd99a91112f0abe03c80
+    --sha256: 1z1shjrjgj50x8lhfirihhfkv2456x2pqklv4a6wdrpz1flhrh2d
     subdir: hasktorch
