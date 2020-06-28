@@ -68,7 +68,7 @@ let
           # also expose sources, nixpkgs, and overlays
           // { inherit overlays sources nixpkgs; };
       })
-      # haskell-nix-ified hasktorch-skeleton cabal project:
+      # haskell-nix-ified two-layer-network cabal project:
       (import ./pkgs.nix)
     ];
 

@@ -16,10 +16,10 @@ with pkgs;
 let
   # This provides a development environment that can be used with nix-shell or
   # lorri. See https://input-output-hk.github.io/haskell.nix/user-guide/development/
-  shell = hasktorchSkeletonHaskellPackages.shellFor {
-    name = "hasktorch-skeleton-dev-shell";
+  shell = twoLayerNetworkHaskellPackages.shellFor {
+    name = "two-layer-network-dev-shell";
 
-    tools = { cabal = "3.2.0.0"; ghcide = "0.2.0"; };
+    tools = { cabal = "3.2.0.0"; ghcide = "0.2.0"; ormolu = "0.1.0.0"; };
 
     # Prevents cabal from choosing alternate plans, so that
     # *all* dependencies are provided by Nix.

@@ -1,5 +1,5 @@
 packages:
-    *.cabal
+    two-layer-network/*.cabal
 
 source-repository-package
     type: git

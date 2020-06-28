@@ -1,0 +1,55 @@
+cabal-version:       2.2
+name:                two-layer-network
+version:             0.0.0.0
+synopsis:            See README for more info
+description:         See README for more info
+license:             MIT
+license-file:        LICENSE
+author:              The Hasktorch Team
+maintainer:          hasktorch@gmail.com
+copyright:           2020 The Hasktorch Team
+category:            Tensors, Machine Learning, AI
+build-type:          Simple
+extra-doc-files:     README.md
+                   , CHANGELOG.md
+tested-with:         GHC == 8.8.3
+
+common config
+  default-language:    Haskell2010
+  default-extensions:  DataKinds
+                     , RankNTypes
+                     , NoStarIsType
+                     , TypeApplications
+                     , TypeFamilies
+                     , TypeOperators
+                     , MultiParamTypeClasses
+                     , UndecidableSuperClasses
+                     , FlexibleInstances
+                     , UndecidableInstances
+                     , FlexibleContexts
+                     , ScopedTypeVariables
+                     , AllowAmbiguousTypes
+                     , PartialTypeSignatures
+                     , ConstraintKinds
+                     , PolyKinds
+                     , GADTs
+                     , DeriveGeneric
+                     , StandaloneDeriving
+                     , RecordWildCards
+  ghc-options:         -Wno-partial-type-signatures
+                       -fplugin GHC.TypeLits.Normalise
+                       -fplugin GHC.TypeLits.KnownNat.Solver
+                       -fplugin GHC.TypeLits.Extra.Solver
+                       -fconstraint-solver-iterations=0
+                       -rtsopts
+  build-depends:       base >= 4.7 && < 5
+                     , hasktorch >= 0.2 && < 0.3
+                     , ghc-typelits-extra
+                     , ghc-typelits-knownnat
+                     , ghc-typelits-natnormalise
+                     , mtl
+
+executable two-layer-network
+  import:              config
+  hs-source-dirs:      src
+  main-is:             Main.hs

@@ -18,12 +18,12 @@
 }:
 with pkgs;
 let
-  ghc = hasktorchSkeletonHaskellPackages.ghcWithPackages (ps: []);
+  ghc = twoLayerNetworkHaskellPackages.ghcWithPackages (ps: []);
 
   stack-shell = haskell.lib.buildStackProject rec {
     inherit ghc;
 
-    name = "hasktorch-skeleton-stack-dev-shell";
+    name = "two-layer-network-stack-dev-shell";
 
     # ghc = pkgs.ghc;
     

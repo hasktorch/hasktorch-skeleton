@@ -1,5 +1,5 @@
 pkgs: _: with pkgs; {
-  hasktorchSkeletonHaskellPackages = import ./haskell.nix {
+  twoLayerNetworkHaskellPackages = import ./haskell.nix {
     inherit
       lib
       stdenv

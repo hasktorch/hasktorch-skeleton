@@ -1,12 +1,12 @@
 ############################################################################
-# hasktorch-skeleton Nix build
+# two-layer-network Nix build
 ############################################################################
 
 { system ? builtins.currentSystem
 , crossSystem ? null
 # allows to customize ghc and profiling (see ./nix/haskell.nix):
 , config ? {}
-# allows to override dependencies of the hasktorch-skeleton project without modifications
+# allows to override dependencies of the two-layer-network project without modifications
 , sourcesOverride ? {}
 # If true, activates CUDA support
 , cudaSupport ? false
@@ -26,7 +26,7 @@ let
 
   haskellPackages = recRecurseIntoAttrs
     # the Haskell.nix package set, reduced to local packages.
-    (selectProjectPackages hasktorchSkeletonHaskellPackages);
+    (selectProjectPackages twoLayerNetworkHaskellPackages);
 
   libs = collectComponents' "library" haskellPackages;
   exes = collectComponents' "exes" haskellPackages;
@@ -34,15 +34,15 @@ let
   self = {
     inherit haskellPackages;
 
-    inherit (haskellPackages.hasktorch-skeleton.identifier) version;
+    inherit (haskellPackages.two-layer-network.identifier) version;
 
     # Grab library components of this package.
-    inherit (libs)
-      hasktorch-skeleton
-      ;
+    inherit (libs);
 
     # Grab executable components of this package.
-    inherit (exes);
+    inherit (exes)
+      two-layer-network
+      ;
 
     # `tests` are the test suites which have been built.
     tests = collectComponents' "tests" haskellPackages;
