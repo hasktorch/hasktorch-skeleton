@@ -43,6 +43,7 @@ common config
                        -fconstraint-solver-iterations=0
                        -rtsopts
   build-depends:       base >= 4.7 && < 5
+                     , libtorch-ffi
                      , hasktorch >= 0.2 && < 0.3
                      , ghc-typelits-extra
                      , ghc-typelits-knownnat

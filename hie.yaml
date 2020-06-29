@@ -1,4 +1,4 @@
 cradle:
     cabal:
-      - path: "./src"
+      - path: "./two-layer-network/src"
         component: "exe:two-layer-network"
