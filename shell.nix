@@ -19,7 +19,10 @@ let
   shell = hasktorchSkeletonHaskellPackages.shellFor {
     name = "hasktorch-skeleton-dev-shell";
 
-    tools = { cabal = "3.2.0.0"; ghcide = "0.2.0"; };
+    tools = {
+      cabal = "3.2.0.0";
+      haskell-language-server = "0.3.0";
+    };
 
     # Prevents cabal from choosing alternate plans, so that
     # *all* dependencies are provided by Nix.

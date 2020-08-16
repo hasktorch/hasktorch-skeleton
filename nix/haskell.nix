@@ -5,7 +5,7 @@
 , buildPackages
 , config ? {}
 # GHC attribute name
-, compiler ? config.haskellNix.compiler or "ghc883"
+, compiler ? config.haskellNix.compiler or "ghc884"
 # Enable profiling
 , profiling ? config.haskellNix.profiling or false
 # Enable CUDA support
@@ -31,6 +31,8 @@ let
     pkg-def-extras = [ ];
 
     modules = [
+      { compiler.nix-name = compiler; }
+
       # Fixes for libtorch-ffi
       {
         packages.libtorch-ffi = {
