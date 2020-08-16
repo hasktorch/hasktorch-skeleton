@@ -21,8 +21,7 @@ let
 
     tools = {
       cabal = "3.2.0.0";
-      ghcide = "0.2.0";
-      ormolu = "0.1.0.0";
+      haskell-language-server = "0.3.0";
     };
 
     # Prevents cabal from choosing alternate plans, so that

@@ -18,24 +18,25 @@
 }:
 with pkgs;
 let
-  ghc = twoLayerNetworkHaskellPackages.ghcWithPackages (ps: []);
+  ghc = twoLayerNetworkHaskellPackages.ghcWithPackages (_: []);
+
+  buildInputs = [
+    git # needed so that stack can get extra-deps from github
+    torch
+    zlib
+  ];
 
   stack-shell = haskell.lib.buildStackProject rec {
     inherit ghc;
 
     name = "two-layer-network-stack-dev-shell";
 
-    # ghc = pkgs.ghc;
     
     extraArgs = [
       "--extra-include-dirs=${torch}/include/torch/csrc/api/include"
     ];
-    
-    buildInputs = [
-      git # needed so that stack can get extra-deps from github
-      torch
-      zlib
-    ];
+
+    inherit buildInputs;
 
     phases = ["nobuildPhase"];
     nobuildPhase = "echo '${lib.concatStringsSep "\n" ([ghc] ++ buildInputs)}' > $out";
