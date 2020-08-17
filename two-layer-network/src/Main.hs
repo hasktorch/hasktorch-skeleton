@@ -5,7 +5,7 @@ import Control.Lens (element, view, (^?))
 import Control.Monad (foldM_, replicateM, void, when)
 import Control.Monad.Trans.Class (MonadTrans (lift))
 import Control.Monad.Trans.Cont (ContT (..), cont, evalContT)
-import Control.Monad.Trans.State (runState, state)
+import Control.Monad.Trans.State (StateT, evalStateT, gets, runState, runStateT, state)
 import Data.Maybe (listToMaybe)
 import Data.Random.Normal (normal)
 import qualified Data.Set as Set
@@ -36,13 +36,13 @@ noisySinc a g = let (noise, g') = random g in (sin a / a + noise, g')
 
 data SincData = SincData [(Float, Float)] deriving (Eq, Ord)
 
-mkSincData :: RandomGen g => Int -> g -> (SincData, g)
+mkSincData :: (RandomGen g, Monad m) => Int -> StateT g m SincData
 mkSincData size =
   let next = do
         x <- (* 10) <$> state normal
         y <- state $ noisySinc x
         pure (x, y)
-   in runState (SincData <$> replicateM size next)
+   in SincData <$> replicateM size next
 
 instance MonadFail m => Dataset m SincData Int (Float, Float) where
   getItem (SincData d) k = maybe (fail "invalid key") pure $ d ^? element k
@@ -72,11 +72,14 @@ main = do
 
   let optim = mkAdam 0 0.9 0.999 (flattenParameters model)
 
-  g <- getStdGen
-
-  let (trainingData, g') = mkSincData 4096 g
-      (evaluationData, g'') = mkSincData 256 g'
-      options = (mapStyleOpts 1) {shuffle = Shuffle g''}
+  (trainingData, evaluationData, options) <-
+    getStdGen
+      >>= evalStateT
+        ( (,,)
+            <$> mkSincData 4096
+              <*> mkSincData 256
+              <*> gets (\g -> (mapStyleOpts 1) {shuffle = Shuffle g})
+        )
 
   let learningRate = 1e-4
       train model optim examples =
@@ -103,13 +106,17 @@ main = do
 
   let numEpochs = 100 :: Int
       eval model options = do
-        (exs, shuffle) <- makeListT options evaluationData
-        loss <- lift . evaluate model =<< collate @BatchSize 1 exs
+        (examples, shuffle) <- makeListT options evaluationData
+        loss <-
+          lift . evaluate model
+            =<< collate @BatchSize 1 examples
         lift . putStrLn $ "Average evaluation loss: " <> show loss
         pure shuffle
       step (model, optim, options) epoch = do
-        (exs, shuffle) <- makeListT options trainingData
-        (model', optim') <- lift . train model optim =<< collate @BatchSize 1 exs
+        (examples, shuffle) <- makeListT options trainingData
+        (model', optim') <-
+          lift . train model optim
+            =<< collate @BatchSize 1 examples
         shuffle <- eval model options {shuffle = shuffle}
         pure (model', optim', options {shuffle = shuffle})
       init = do
