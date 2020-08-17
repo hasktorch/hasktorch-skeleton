@@ -36,6 +36,7 @@ common config
                      , DeriveGeneric
                      , StandaloneDeriving
                      , RecordWildCards
+                    --  , OverloadedLists
   ghc-options:         -Wno-partial-type-signatures
                        -fplugin GHC.TypeLits.Normalise
                        -fplugin GHC.TypeLits.KnownNat.Solver
@@ -48,7 +49,16 @@ common config
                      , ghc-typelits-extra
                      , ghc-typelits-knownnat
                      , ghc-typelits-natnormalise
-                     , mtl
+                     , random
+                     , normaldistribution
+                     , lens
+                     , generic-lens
+                     , containers
+                     , pipes
+                     , pipes-group
+                     , pipes-concurrency
+                     , foldl
+                     , transformers
 
 executable two-layer-network
   import:              config
