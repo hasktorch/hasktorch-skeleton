@@ -73,6 +73,52 @@ type BatchSize = 100
 
 type NumHidden = 100
 
+train ::
+  _ =>
+  model ->
+  optim ->
+  LearningRate device dtype ->
+  ListT IO (Tensor device dtype shape, Tensor device dtype shape, Int) ->
+  IO (model, optim)
+train model optim learningRate examples =
+  let step (model, optim) (x, y, _iter) = do
+        let y' = forward model x
+            loss = mseLoss @'ReduceMean y' y
+        runStep model optim loss learningRate
+      init = pure (model, optim)
+      done = pure
+   in P.foldM step init done . enumerate $ examples
+
+evaluate ::
+  _ =>
+  model ->
+  ListT m (Tensor device DType shape, Tensor device DType shape, Int) ->
+  m Float
+evaluate model examples =
+  let step (loss, _) (x, y, iter) = do
+        let y' = forward model x
+            loss' = toFloat $ mseLoss @'ReduceMean y' y
+        pure (loss + loss', iter)
+      init = pure (0, 0)
+      done (_, 0) = pure 0
+      done (loss, iter) =
+        let scale x = x / (fromInteger . toInteger $ iter + natValI @BatchSize)
+         in pure $ scale loss
+   in P.foldM step init done . enumerate $ examples
+
+infer ::
+  _ =>
+  model ->
+  ListT m (Tensor device DType shape) ->
+  m [([Float], [Float])]
+infer model xs =
+  let step rows x = do
+        let y' = forward model $ x
+        pure (rows ++ zip (toList . Just $ x) (toList . Just $ y'))
+      init = pure []
+      done = pure
+   in P.foldM step init done . enumerate $ xs
+
 main :: IO ()
 main = do
   model <-
@@ -82,37 +128,16 @@ main = do
 
   let optim = mkAdam 0 0.9 0.999 (flattenParameters model)
       learningRate = 1e-2
-      numEpochs = 100 :: Int
-
-  let train model optim examples =
-        let step (model, optim) (x, y, iter) = do
-              -- putStrLn $ "Training batch " <> show iter
-              let y' = forward model x
-                  loss = mseLoss @'ReduceMean y' y
-              runStep model optim loss learningRate
-            init = pure (model, optim)
-            done = pure
-         in P.foldM step init done . enumerate $ examples
-
-  let evaluate model examples =
-        let step (loss, _) (x, y, iter) = do
-              let y' = forward model x
-                  loss' = toFloat $ mseLoss @'ReduceMean y' y
-              pure (loss + loss', iter)
-            init = pure (0, 0)
-            done (_, 0) = pure 0
-            done (loss, iter) =
-              let scale x = x / (fromInteger . toInteger $ iter + natValI @BatchSize)
-               in pure $ scale loss
-         in P.foldM step init done . enumerate $ examples
-
-  let infer model xs =
-        let step rows x = do
-              let y' = forward model $ x
-              pure (rows ++ zip (toList . Just $ x) (toList . Just $ y'))
-            init = pure []
-            done = pure
-         in P.foldM step init done . enumerate $ xs
+      numEpochs = 100
+      numWarmupEpochs = 10
+      learningRateSchedule epoch
+        | 0 <= epoch && epoch < numWarmupEpochs =
+          let a :: Float = fromIntegral (epoch + 1) / fromIntegral numWarmupEpochs
+           in mulScalar a learningRate
+        | numWarmupEpochs <= epoch && epoch < numEpochs =
+          let a :: Float = fromIntegral (numEpochs - epoch - 1) / fromIntegral (numEpochs - numWarmupEpochs)
+           in mulScalar a learningRate
+        | otherwise = 0
 
   (trainingData, evaluationData, options) <-
     getStdGen
@@ -123,55 +148,60 @@ main = do
               <*> gets (\g -> (mapStyleOpts 1) {shuffle = Shuffle g})
         )
 
-  let train' model optim options sincData = do
-        (examples, shuffle) <- makeListT options sincData
-        (model, optim) <-
-          lift . train model optim
-            =<< collate @BatchSize 1 examples
-        pure (model, optim, options {shuffle = shuffle})
-      evaluate' model options sincData = do
-        (examples, shuffle) <- makeListT options sincData
-        loss <-
-          lift . evaluate model
-            =<< collate @BatchSize @Device 1 examples
-        lift . putStrLn $ "Average " <> unpack (name sincData) <> " loss: " <> show loss
-        pure options {shuffle = shuffle}
-      plot model file = do
-        let xs = [-20, -19.95 .. 20]
-            mkDataRow x y =
-              dataRow
-                [ ("x", Number . float2Double $ x),
-                  ("y", Number . float2Double $ y)
-                ]
-        rawRows <-
-          lift . infer model
-            =<< collate' @BatchSize @Device @DType 1 (P.Select . P.each $ xs)
-        prediction <-
-          let f rawRow dataRows = do
-                case rawRow of
-                  ([x], [y]) -> pure $ mkDataRow x y dataRows
-                  _ -> fail "invalid list shape(s)"
-           in dataFromRows [] <$> foldrM f [] rawRows
-        let evaluation = dataFromRows [] . foldr (uncurry mkDataRow) [] . unSincData $ evaluationData
-        let target = dataFromRows [] . foldr (mkDataRow `ap` sinc) [] $ xs
-        lift . toHtmlFile file . mkVegaLite . datasets $
-          [ (("prediction", prediction)),
-            (("evaluation", evaluation)),
-            (("target", target))
-          ]
-      step (model, optim, options) epoch = do
-        (model, optim, options) <- train' model optim options trainingData
+  let step (model, optim, options) epoch = do
+        (model, optim, options) <- train' model optim (learningRateSchedule epoch) options trainingData
         options <- evaluate' model options trainingData
         options <- evaluate' model options evaluationData
-        plot model "plot.html"
+        plot model "plot.html" evaluationData
         pure (model, optim, options)
       init = do
         options <- evaluate' model options trainingData
         options <- evaluate' model options evaluationData
         pure (model, optim, options)
       done = pure
+  void . evalContT . P.foldM step init done $ P.each [1 .. numEpochs]
 
-  void . evalContT $ P.foldM step init done (P.each [1 .. numEpochs])
+train' :: _ => model -> optim -> LearningRate device dtype -> MapStyleOptions -> dataset -> ContT r IO (model, optim, MapStyleOptions)
+train' model optim learningRate options sincData = do
+  (examples, shuffle) <- makeListT options sincData
+  (model, optim) <-
+    lift . train model optim learningRate
+      =<< collate @BatchSize 1 examples
+  pure (model, optim, options {shuffle = shuffle})
+
+evaluate' :: _ => model -> MapStyleOptions -> SincData -> ContT r IO MapStyleOptions
+evaluate' model options sincData = do
+  (examples, shuffle) <- makeListT options sincData
+  loss <-
+    lift . evaluate model
+      =<< collate @BatchSize @Device 1 examples
+  lift . putStrLn $ "Average " <> unpack (name sincData) <> " loss: " <> show loss
+  pure options {shuffle = shuffle}
+
+plot :: _ => model -> FilePath -> SincData -> ContT r IO ()
+plot model file sincData = do
+  let xs = [-20, -19.95 .. 20]
+      mkDataRow x y =
+        dataRow
+          [ ("x", Number . float2Double $ x),
+            ("y", Number . float2Double $ y)
+          ]
+  prediction <- do
+    rawRows <-
+      lift . infer model
+        =<< collate' @BatchSize @Device @DType 1 (P.Select . P.each $ xs)
+    let f rawRow dataRows = do
+          case rawRow of
+            ([x], [y]) -> pure $ mkDataRow x y dataRows
+            _ -> fail "invalid list shape(s)"
+      in dataFromRows [] <$> foldrM f [] rawRows
+  let evaluation = dataFromRows [] . foldr (uncurry mkDataRow) [] . unSincData $ sincData
+  let target = dataFromRows [] . foldr (mkDataRow `ap` sinc) [] $ xs
+  lift . toHtmlFile file . mkVegaLite . datasets $
+    [ (("prediction", prediction)),
+      (("evaluation", evaluation)),
+      (("target", target))
+    ]
 
 collate ::
   forall batchSize device dtype r m.
