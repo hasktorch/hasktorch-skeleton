@@ -285,10 +285,14 @@ mkVegaLite dataset =
           . position X [PName "x", PmType Quantitative]
           . position Y [PName "y", PmType Quantitative, PScale scaleOptsOverview]
       scaleOptsOverview = [SDomain (DNumbers [-2, 2]), SNice (IsNice False)]
-      transOverview = transform . filter (FRange "x" (NumberRange (-20) 20))
+      transOverview =
+        transform
+          . filter (FRange "x" (NumberRange (-20) 20))
+          . filter (FRange "y" (NumberRange (-2) 2))
       target =
         asSpec
           [ dataFromSource "target" [],
+            transOverview [],
             mark Line [MStrokeWidth 0.5, MStroke "black"]
           ]
       evaluation =
@@ -300,6 +304,7 @@ mkVegaLite dataset =
       prediction =
         asSpec
           [ dataFromSource "prediction" [],
+            transOverview [],
             mark Line []
           ]
       overview =
@@ -314,7 +319,7 @@ mkVegaLite dataset =
         encoding
           . position X [PName "epoch", PmType Quantitative, PScale scaleOptsLosses]
           . position Y [PName "loss", PmType Quantitative, PScale [SType ScLog]]
-          . color [ MName "title", MmType Nominal, MLegend [ LTitle "", LOrient LOBottom ]]
+          . color [MName "title", MmType Nominal, MLegend [LTitle "", LOrient LOBottom]]
       scaleOptsLosses = [SDomain (DNumbers [0, 100]), SNice (IsNice False)]
       losses =
         asSpec
