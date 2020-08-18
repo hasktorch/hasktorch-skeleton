@@ -36,6 +36,7 @@ common config
                      , DeriveGeneric
                      , StandaloneDeriving
                      , RecordWildCards
+                     , OverloadedStrings
                     --  , OverloadedLists
   ghc-options:         -Wno-partial-type-signatures
                        -fplugin GHC.TypeLits.Normalise
@@ -59,6 +60,8 @@ common config
                      , pipes-concurrency
                      , foldl
                      , transformers
+                     , hvega
+                     , text
 
 executable two-layer-network
   import:              config
