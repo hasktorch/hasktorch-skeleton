@@ -69,10 +69,6 @@ instance
   forward TwoLayerNet {..} =
     forward linear2 . atan . forward linear1
 
-type BatchSize = 100
-
-type NumHidden = 100
-
 train ::
   _ =>
   model ->
@@ -90,9 +86,10 @@ train model optim learningRate examples =
    in P.foldM step init done . enumerate $ examples
 
 evaluate ::
+  forall m model device batchSize shape.
   _ =>
   model ->
-  ListT m (Tensor device DType shape, Tensor device DType shape, Int) ->
+  ListT m (Tensor device DType (batchSize ': shape), Tensor device DType (batchSize ': shape), Int) ->
   m Float
 evaluate model examples =
   let step (loss, _) (x, y, iter) = do
@@ -102,7 +99,7 @@ evaluate model examples =
       init = pure (0, 0)
       done (_, 0) = pure 0
       done (loss, iter) =
-        let scale x = x / (fromInteger . toInteger $ iter + natValI @BatchSize)
+        let scale x = x / (fromInteger . toInteger $ iter + natValI @batchSize)
          in pure $ scale loss
    in P.foldM step init done . enumerate $ examples
 
@@ -119,6 +116,10 @@ infer model xs =
       done = pure
    in P.foldM step init done . enumerate $ xs
 
+type BatchSize = 100
+
+type NumHidden = 100
+
 main :: IO ()
 main = do
   model <-
@@ -131,11 +132,11 @@ main = do
       numEpochs = 100
       numWarmupEpochs = 10
       learningRateSchedule epoch
-        | 0 <= epoch && epoch < numWarmupEpochs =
-          let a :: Float = fromIntegral (epoch + 1) / fromIntegral numWarmupEpochs
+        | 0 < epoch && epoch <= numWarmupEpochs =
+          let a :: Float = fromIntegral epoch / fromIntegral numWarmupEpochs
            in mulScalar a learningRate
-        | numWarmupEpochs <= epoch && epoch < numEpochs =
-          let a :: Float = fromIntegral (numEpochs - epoch - 1) / fromIntegral (numEpochs - numWarmupEpochs)
+        | numWarmupEpochs < epoch && epoch < numEpochs =
+          let a :: Float = fromIntegral (numEpochs - epoch) / fromIntegral (numEpochs - numWarmupEpochs)
            in mulScalar a learningRate
         | otherwise = 0
 
@@ -148,18 +149,22 @@ main = do
               <*> gets (\g -> (mapStyleOpts 1) {shuffle = Shuffle g})
         )
 
-  let step (model, optim, options) epoch = do
+  let stats model trainingLosses evaluationLosses options = do
+        (trainingLoss, options) <- evaluate' model options trainingData
+        (evaluationLoss, options) <- evaluate' model options evaluationData
+        trainingLosses <- pure $ trainingLoss : trainingLosses
+        evaluationLosses <- pure $ evaluationLoss : evaluationLosses
+        plot "plot.html" (infer' model) trainingLosses evaluationLosses evaluationData
+        pure (trainingLosses, evaluationLosses, options)
+      step (model, optim, trainingLosses, evaluationLosses, options) epoch = do
         (model, optim, options) <- train' model optim (learningRateSchedule epoch) options trainingData
-        options <- evaluate' model options trainingData
-        options <- evaluate' model options evaluationData
-        plot model "plot.html" evaluationData
-        pure (model, optim, options)
+        (trainingLosses, evaluationLosses, options) <- stats model trainingLosses evaluationLosses options
+        pure (model, optim, trainingLosses, evaluationLosses, options)
       init = do
-        options <- evaluate' model options trainingData
-        options <- evaluate' model options evaluationData
-        pure (model, optim, options)
+        (trainingLosses, evaluationLosses, options) <- stats model [] [] options
+        pure (model, optim, trainingLosses, evaluationLosses, options)
       done = pure
-  void . evalContT . P.foldM step init done $ P.each [1 .. numEpochs]
+  void . evalContT . P.foldM step init done . P.each $ [1 .. numEpochs]
 
 train' :: _ => model -> optim -> LearningRate device dtype -> MapStyleOptions -> dataset -> ContT r IO (model, optim, MapStyleOptions)
 train' model optim learningRate options sincData = do
@@ -169,17 +174,29 @@ train' model optim learningRate options sincData = do
       =<< collate @BatchSize 1 examples
   pure (model, optim, options {shuffle = shuffle})
 
-evaluate' :: _ => model -> MapStyleOptions -> SincData -> ContT r IO MapStyleOptions
+evaluate' :: _ => model -> MapStyleOptions -> SincData -> ContT r IO (Float, MapStyleOptions)
 evaluate' model options sincData = do
   (examples, shuffle) <- makeListT options sincData
   loss <-
     lift . evaluate model
       =<< collate @BatchSize @Device 1 examples
   lift . putStrLn $ "Average " <> unpack (name sincData) <> " loss: " <> show loss
-  pure options {shuffle = shuffle}
+  pure (loss, options {shuffle = shuffle})
 
-plot :: _ => model -> FilePath -> SincData -> ContT r IO ()
-plot model file sincData = do
+infer' :: _ => model -> [Float] -> ContT r IO [([Float], [Float])]
+infer' model xs =
+  lift . infer model
+    =<< collate' @BatchSize @Device @DType 1 (P.Select . P.each $ xs)
+
+plot ::
+  _ =>
+  FilePath ->
+  ([Float] -> ContT r IO [([Float], [Float])]) ->
+  [Float] ->
+  [Float] ->
+  SincData ->
+  ContT r IO ()
+plot file infer trainingLosses evaluationLosses sincData = do
   let xs = [-20, -19.95 .. 20]
       mkDataRow x y =
         dataRow
@@ -187,20 +204,34 @@ plot model file sincData = do
             ("y", Number . float2Double $ y)
           ]
   prediction <- do
-    rawRows <-
-      lift . infer model
-        =<< collate' @BatchSize @Device @DType 1 (P.Select . P.each $ xs)
+    rawRows <- infer xs
     let f rawRow dataRows = do
           case rawRow of
             ([x], [y]) -> pure $ mkDataRow x y dataRows
             _ -> fail "invalid list shape(s)"
-      in dataFromRows [] <$> foldrM f [] rawRows
+     in dataFromRows [] <$> foldrM f [] rawRows
   let evaluation = dataFromRows [] . foldr (uncurry mkDataRow) [] . unSincData $ sincData
   let target = dataFromRows [] . foldr (mkDataRow `ap` sinc) [] $ xs
+  let losses =
+        let mkDataRows title losses =
+              zipWith
+                ( \epoch loss ->
+                    dataRow
+                      [ ("epoch", Number . fromInteger $ epoch),
+                        ("title", Str title),
+                        ("loss", Number . float2Double $ loss)
+                      ]
+                )
+                [0, 1 ..]
+                (reverse losses)
+         in dataFromRows [] . foldr id [] $
+              mkDataRows "training" trainingLosses
+                <> mkDataRows "evaluation" evaluationLosses
   lift . toHtmlFile file . mkVegaLite . datasets $
     [ (("prediction", prediction)),
       (("evaluation", evaluation)),
-      (("target", target))
+      (("target", target)),
+      (("losses"), losses)
     ]
 
 collate ::
@@ -245,12 +276,16 @@ bufferedCollate buffer batchSize f as = ContT $ \g ->
 
 mkVegaLite :: Data -> VegaLite
 mkVegaLite dataset =
-  let enc =
+  let -- width and height of the individual plots (in pixels)
+      w = width 600
+      h = height 400
+
+      encOverview =
         encoding
           . position X [PName "x", PmType Quantitative]
-          . position Y [PName "y", PmType Quantitative, PScale scaleOpts]
-      scaleOpts = [SDomain (DNumbers [-2, 2]), SNice (IsNice False)]
-      trans = transform . filter (FRange "x" (NumberRange (-20) 20))
+          . position Y [PName "y", PmType Quantitative, PScale scaleOptsOverview]
+      scaleOptsOverview = [SDomain (DNumbers [-2, 2]), SNice (IsNice False)]
+      transOverview = transform . filter (FRange "x" (NumberRange (-20) 20))
       target =
         asSpec
           [ dataFromSource "target" [],
@@ -259,7 +294,7 @@ mkVegaLite dataset =
       evaluation =
         asSpec
           [ dataFromSource "evaluation" [],
-            trans [],
+            transOverview [],
             mark Point [MSize 5, MStroke "black"]
           ]
       prediction =
@@ -267,10 +302,29 @@ mkVegaLite dataset =
           [ dataFromSource "prediction" [],
             mark Line []
           ]
+      overview =
+        asSpec
+          [ layer [target, evaluation, prediction],
+            encOverview [],
+            w,
+            h
+          ]
+
+      encLosses =
+        encoding
+          . position X [PName "epoch", PmType Quantitative, PScale scaleOptsLosses]
+          . position Y [PName "loss", PmType Quantitative, PScale [SType ScLog]]
+          . color [ MName "title", MmType Nominal, MLegend [ LTitle "", LOrient LOBottom ]]
+      scaleOptsLosses = [SDomain (DNumbers [0, 100]), SNice (IsNice False)]
+      losses =
+        asSpec
+          [ dataFromSource "losses" [],
+            encLosses [],
+            mark Line [],
+            w,
+            h
+          ]
    in toVegaLite
         [ dataset,
-          layer [target, evaluation, prediction],
-          enc [],
-          width 600,
-          height 400
+          vConcat [overview, losses]
         ]
