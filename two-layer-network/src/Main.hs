@@ -3,7 +3,7 @@ module Main where
 import qualified Control.Foldl as L
 import Control.Lens (element, view, (^?))
 import Control.Monad (ap, replicateM, void)
-import Control.Monad.Trans.Class (MonadTrans (lift))
+import Control.Monad.Trans.Class (MonadTrans (..))
 import Control.Monad.Trans.Cont (ContT (..), evalContT)
 import Control.Monad.Trans.State (StateT (..), evalStateT, gets, state)
 import Data.Foldable (foldrM)
@@ -25,7 +25,7 @@ import Torch.Data.Internal (fromInput', toOutput', withBufferLifted)
 import Torch.Data.Pipeline (Dataset (..), MapStyleOptions (..), Sample (..), makeListT, mapStyleOpts)
 import Torch.Data.StreamedPipeline (ListT (enumerate), MonadBaseControl)
 import Torch.Typed hiding (DType, Device, shape, sin)
-import Prelude hiding (atan, filter)
+import Prelude hiding (filter, tanh)
 
 -- | Use single precision for all tensor computations
 type DType = 'Float
@@ -36,20 +36,20 @@ type Device = '( 'CPU, 0)
 -- | Uncommend this to run on GPU instead
 -- type Device = '( 'CUDA, 0)
 
--- | Compute the sine cardinal function,
+-- | Compute the sine cardinal (sinc) function,
 -- see https://mathworld.wolfram.com/SincFunction.html
 sinc :: Floating a => a -> a
 sinc a = sin a / a
 
--- | Compute the sine cardinal function and add normally distributed noise
+-- | Compute the sine cardinal (sinc) function and add normally distributed noise
 -- of strength epsilon
 noisySinc :: (Floating a, Random a, RandomGen g) => a -> a -> g -> (a, g)
 noisySinc eps a g = let (noise, g') = normal g in (sinc a + eps * noise, g')
 
--- | Datatype to represent a dataset of sine cardinal inputs and outputs
+-- | Datatype to represent a dataset of sine cardinal (sinc) inputs and outputs
 data SincData = SincData {name :: Text, unSincData :: [(Float, Float)]} deriving (Eq, Ord)
 
--- | Create a dataset of noisy sine cardinal values of a desired size
+-- | Create a dataset of noisy sine cardinal (sinc) values of a desired size
 mkSincData :: (RandomGen g, Monad m) => Text -> Int -> StateT g m SincData
 mkSincData name size =
   let next = do
@@ -58,7 +58,7 @@ mkSincData name size =
         pure (x, y)
    in SincData name <$> replicateM size next
 
--- | 'Dataset' instance used for streaming sine cardinal examples
+-- | 'Dataset' instance used for streaming sine cardinal (sinc) examples
 instance MonadFail m => Dataset m SincData Int (Float, Float) where
   getItem (SincData _ d) k = maybe (fail "invalid key") pure $ d ^? element k
   keys (SincData _ d) = Set.fromList [0 .. Prelude.length d -1]
@@ -72,7 +72,7 @@ data TwoLayerNet (numIn :: Nat) (numOut :: Nat) (numHidden :: Nat) = TwoLayerNet
   }
   deriving (Show, Generic)
 
--- | 'HasForward' instance used to define the batched forward pass of the model.
+-- | 'HasForward' instance used to define the batched forward pass of the model
 instance
   HasForward
     (TwoLayerNet numIn numOut numHidden)
@@ -81,18 +81,25 @@ instance
   where
   forward TwoLayerNet {..} =
     -- call the linear forward function on the 'Linear' datatypes
-    -- and sandwich a 'atan' activation function in between
-    forward linear2 . atan . forward linear1
+    -- and sandwich a 'tanh' activation function in between
+    forward linear2 . tanh . forward linear1
 
+-- | Train the model for one epoch
 train ::
   _ =>
+  -- | initial model datatype holding the weights
   model ->
+  -- | initial optimizer, e.g. Adam
   optim ->
+  -- | learning rate, 'LearningRate device dtype' is a type alias for 'Tensor device dtype '[]'
   LearningRate device dtype ->
+  -- | stream of training examples consisting of inputs, outputs, and an iteration counter
   ListT IO (Tensor device dtype shape, Tensor device dtype shape, Int) ->
+  -- | final model and optimizer
   IO (model, optim)
 train model optim learningRate examples =
-  let step (model, optim) (x, y, _iter) = do
+  let -- training step function
+      step (model, optim) (x, y, _iter) = do
         let -- compute predicted y' by passing x to the model
             y' = forward model x
             -- compute the loss from the predicted values y' and the true values y;
@@ -102,45 +109,66 @@ train model optim learningRate examples =
         -- compute gradient of the loss with respect to all the learnable parameters of the model
         -- and update the weights using the optimizer.
         runStep model optim loss learningRate
+      -- initial training state
       init = pure (model, optim)
+      -- trivial extraction function
       done = pure
-   in P.foldM step init done . enumerate $ examples
+   in -- training is a fold over the 'examples' stream
+      P.foldM step init done . enumerate $ examples
 
+-- | Evaluate the model
 evaluate ::
   forall m model device batchSize shape.
   _ =>
+  -- | model to be evaluated
   model ->
+  -- | stream of evaluation examples consisting of inputs, outputs, and an iteration counter
   ListT m (Tensor device DType (batchSize ': shape), Tensor device DType (batchSize ': shape), Int) ->
   m Float
 evaluate model examples =
-  let step (loss, _) (x, y, iter) = do
+  let -- evaluation step function
+      step (loss, _) (x, y, iter) = do
         let y' = forward model x
             loss' = toFloat $ mseLoss @'ReduceMean y' y
         pure (loss + loss', iter)
+      -- initial evaluation state
       init = pure (0, 0)
+      -- calculate the average loss per example and return
       done (_, 0) = pure 0
       done (loss, iter) =
         let scale x = x / (fromInteger . toInteger $ iter + natValI @batchSize)
          in pure $ scale loss
-   in P.foldM step init done . enumerate $ examples
+   in -- like training, evaluation is a fold over the 'examples' stream
+      P.foldM step init done . enumerate $ examples
 
+-- | Run inference using a trained model
 infer ::
   _ =>
+  -- | model to use for inference
   model ->
+  -- | stream of inputs to run inference on
   ListT m (Tensor device DType shape) ->
+  -- | list of input and output pairs
   m [([Float], [Float])]
-infer model xs =
-  let step rows x = do
+infer model inputs =
+  let -- inference step function
+      step rows x = do
         let y' = forward model $ x
         pure (rows ++ zip (toList . Just $ x) (toList . Just $ y'))
+      -- initial inference state
       init = pure []
+      -- trivial extraction function
       done = pure
-   in P.foldM step init done . enumerate $ xs
+   in -- like training and evaluation, inference is a fold over the 'inputs' stream
+      P.foldM step init done . enumerate $ inputs
 
+-- | Batch size
 type BatchSize = 100
 
+-- | Number of hidden layers
 type NumHidden = 100
 
+-- | Main program
 main :: IO ()
 main = do
   model <-
@@ -157,11 +185,16 @@ main = do
       -- use the Adam optimization algorithm, see https://arxiv.org/abs/1412.6980
       optim = mkAdam 0 0.9 0.999 (flattenParameters model)
 
-  let maxLearningRate = 1e-2
+  let -- learning rate(s)
+      maxLearningRate = 1e-2
       finalLearningRate = 1e-4
+
+      -- total number of epochs
       numEpochs = 100
       numWarmupEpochs = 10
       numCooldownEpochs = 10
+
+      -- learning rate schedule
       learningRateSchedule epoch
         | epoch <= 0 = 0.0
         | 0 < epoch && epoch <= numWarmupEpochs =
@@ -186,7 +219,8 @@ main = do
               <*> gets (\g -> (mapStyleOpts 1) {shuffle = Shuffle g})
         )
 
-  let stats model learningRate trainingLosses evaluationLosses learningRates options = do
+  let -- generate statistics and plots for each epoch
+      stats model learningRate trainingLosses evaluationLosses learningRates options = do
         learningRates <- pure $ toFloat learningRate : learningRates
         (trainingLoss, options) <- evaluate' model options trainingData
         (evaluationLoss, options) <- evaluate' model options evaluationData
@@ -194,17 +228,29 @@ main = do
         evaluationLosses <- pure $ evaluationLoss : evaluationLosses
         plot "plot.html" (infer' model) trainingLosses evaluationLosses learningRates evaluationData
         pure (trainingLosses, evaluationLosses, learningRates, options)
+      -- program step function
       step (model, optim, trainingLosses, evaluationLosses, learningRates, options) epoch = do
         let learningRate = learningRateSchedule epoch
-        (model, optim, options) <- train' model optim learningRate options trainingData
-        (trainingLosses, evaluationLosses, learningRates, options) <- stats model learningRate trainingLosses evaluationLosses learningRates options
+        (model, optim, options) <-
+          -- train the model
+          train' model optim learningRate options trainingData
+        (trainingLosses, evaluationLosses, learningRates, options) <-
+          -- calculate epoch statistics
+          stats model learningRate trainingLosses evaluationLosses learningRates options
         pure (model, optim, trainingLosses, evaluationLosses, learningRates, options)
+      -- initial program state
       init = do
         let learningRate = learningRateSchedule 0
-        (trainingLosses, evaluationLosses, learningRates, options) <- stats model learningRate [] [] [] options
+        (trainingLosses, evaluationLosses, learningRates, options) <-
+          -- calculate initial statistics
+          stats model learningRate [] [] [] options
         pure (model, optim, trainingLosses, evaluationLosses, learningRates, options)
-      done = pure
-  void . evalContT . P.foldM step init done . P.each $ [1 .. numEpochs]
+      -- just keep the final model
+      done (model, _, _, _, _, _) = pure model
+  -- the whole program is a fold over epochs
+  model <- evalContT . P.foldM step init done . P.each $ [1 .. numEpochs]
+  -- save the model weights to a file and end program
+  save (hmap' ToDependent . flattenParameters $ model) "model.pt"
 
 train' :: _ => model -> optim -> LearningRate device dtype -> MapStyleOptions -> dataset -> ContT r IO (model, optim, MapStyleOptions)
 train' model optim learningRate options sincData = do
@@ -230,12 +276,19 @@ infer' model xs =
 
 plot ::
   _ =>
+  -- | output file path
   FilePath ->
+  -- | inference continuation
   ([Float] -> ContT r IO [([Float], [Float])]) ->
+  -- | training losses
   [Float] ->
+  -- | evaluation losses
   [Float] ->
+  -- | learning rates
   [Float] ->
+  -- | evaluation data
   SincData ->
+  -- | returned continuation
   ContT r IO ()
 plot file infer trainingLosses evaluationLosses learningRates sincData = do
   let xs = [-20, -19.95 .. 20]
