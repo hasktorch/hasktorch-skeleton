@@ -1,6 +1,5 @@
 module Main where
 
-import Prelude hiding (atan, filter)
 import qualified Control.Foldl as L
 import Control.Lens (element, view, (^?))
 import Control.Monad (ap, replicateM, void)
@@ -25,22 +24,32 @@ import System.Random (Random, RandomGen, getStdGen, random)
 import Torch.Data.Internal (fromInput', toOutput', withBufferLifted)
 import Torch.Data.Pipeline (Dataset (..), MapStyleOptions (..), Sample (..), makeListT, mapStyleOpts)
 import Torch.Data.StreamedPipeline (ListT (enumerate), MonadBaseControl)
-import Torch.Typed hiding (DType, Device, shape, sin)
+import Torch.Typed hiding (DType, Device, exp, shape, sin)
+import Prelude hiding (atan, filter)
 
+-- | Use single precision for all tensor computations
 type DType = 'Float
 
+-- | Run all tensor computation on CPU
 type Device = '( 'CPU, 0)
 
+-- | Uncommend this to run on GPU instead
 -- type Device = '( 'CUDA, 0)
 
+-- | Compute the sine cardinal function,
+-- see https://mathworld.wolfram.com/SincFunction.html
 sinc :: Floating a => a -> a
 sinc a = sin a / a
 
+-- | Compute the sine cardinal function and add normally distributed noise
+-- of strength epsilon
 noisySinc :: (Floating a, Random a, RandomGen g) => a -> a -> g -> (a, g)
 noisySinc eps a g = let (noise, g') = normal g in (sinc a + eps * noise, g')
 
+-- | Datatype to represent a dataset of sine cardinal inputs and outputs
 data SincData = SincData {name :: Text, unSincData :: [(Float, Float)]} deriving (Eq, Ord)
 
+-- | Create a dataset of noisy sine cardinal values of a desired size
 mkSincData :: (RandomGen g, Monad m) => Text -> Int -> StateT g m SincData
 mkSincData name size =
   let next = do
@@ -49,16 +58,21 @@ mkSincData name size =
         pure (x, y)
    in SincData name <$> replicateM size next
 
+-- | 'Dataset' instance used for streaming sine cardinal examples
 instance MonadFail m => Dataset m SincData Int (Float, Float) where
   getItem (SincData _ d) k = maybe (fail "invalid key") pure $ d ^? element k
   keys (SincData _ d) = Set.fromList [0 .. Prelude.length d -1]
 
+-- | Datatype to represent the model parameters.
+-- The datatype is parameterized over the number of input, output, and hidden dimensions.
+-- Each 'Linear' datatype holds internal weight tensors for weight and bias.
 data TwoLayerNet (numIn :: Nat) (numOut :: Nat) (numHidden :: Nat) = TwoLayerNet
-  { linear1 :: Linear numIn numHidden DType Device,
-    linear2 :: Linear numHidden numOut DType Device
+  { linear1 :: Linear numIn numHidden DType Device, -- first linear layer
+    linear2 :: Linear numHidden numOut DType Device -- second linear layer
   }
   deriving (Show, Generic)
 
+-- | 'HasForward' instance used to define the batched forward pass of the model.
 instance
   HasForward
     (TwoLayerNet numIn numOut numHidden)
@@ -66,6 +80,8 @@ instance
     (Tensor Device DType '[batchSize, numOut])
   where
   forward TwoLayerNet {..} =
+    -- call the linear forward function on the 'Linear' datatypes
+    -- and sandwich a 'atan' activation function in between
     forward linear2 . atan . forward linear1
 
 train ::
@@ -77,8 +93,14 @@ train ::
   IO (model, optim)
 train model optim learningRate examples =
   let step (model, optim) (x, y, _iter) = do
-        let y' = forward model x
+        let -- compute predicted y' by passing x to the model
+            y' = forward model x
+            -- compute the loss from the predicted values y' and the true values y;
+            -- the loss function is the reduced Mean Squared Error (MSE),
+            -- i.e. the average squared difference between the predicted values and the true values
             loss = mseLoss @'ReduceMean y' y
+        -- compute gradient of the loss with respect to all the learnable parameters of the model
+        -- and update the weights using the optimizer.
         runStep model optim loss learningRate
       init = pure (model, optim)
       done = pure
@@ -127,17 +149,22 @@ main = do
       <*> sample LinearSpec
 
   let optim = mkAdam 0 0.9 0.999 (flattenParameters model)
-      learningRate = 1e-2
+      maxLearningRate = 1e-1
+      finalLearningRate = 1e-6
       numEpochs = 100
       numWarmupEpochs = 10
+      numExplorationEpochs = 20
       learningRateSchedule epoch
+        | epoch <= 0 = 0
         | 0 < epoch && epoch <= numWarmupEpochs =
           let a :: Float = fromIntegral epoch / fromIntegral numWarmupEpochs
-           in mulScalar a learningRate
-        | numWarmupEpochs < epoch && epoch < numEpochs =
-          let a :: Float = fromIntegral (numEpochs - epoch) / fromIntegral (numEpochs - numWarmupEpochs)
-           in mulScalar a learningRate
-        | otherwise = 0
+           in mulScalar a maxLearningRate
+        | numWarmupEpochs < epoch && epoch < numEpochs - numExplorationEpochs =
+          let a :: Float =
+                fromIntegral (numEpochs - numExplorationEpochs - epoch)
+                  / fromIntegral (numEpochs - numExplorationEpochs - numWarmupEpochs)
+           in mulScalar a maxLearningRate + mulScalar (1 - a) finalLearningRate
+        | otherwise = finalLearningRate
 
   (trainingData, evaluationData, options) <-
     getStdGen
@@ -276,8 +303,8 @@ bufferedCollate buffer batchSize f as = ContT $ \g ->
 mkVegaLite :: Data -> VegaLite
 mkVegaLite dataset =
   let -- width and height of the individual plots (in pixels)
-      w = width 600
-      h = height 400
+      w = width 700
+      h = height 350
 
       encOverview =
         encoding
