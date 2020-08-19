@@ -24,7 +24,7 @@ import System.Random (Random, RandomGen, getStdGen, random)
 import Torch.Data.Internal (fromInput', toOutput', withBufferLifted)
 import Torch.Data.Pipeline (Dataset (..), MapStyleOptions (..), Sample (..), makeListT, mapStyleOpts)
 import Torch.Data.StreamedPipeline (ListT (enumerate), MonadBaseControl)
-import Torch.Typed hiding (DType, Device, exp, shape, sin)
+import Torch.Typed hiding (DType, Device, shape, sin)
 import Prelude hiding (atan, filter)
 
 -- | Use single precision for all tensor computations
@@ -144,25 +144,33 @@ type NumHidden = 100
 main :: IO ()
 main = do
   model <-
+    -- initialize the model
     TwoLayerNet @1 @1 @NumHidden
+      -- randomly initialize the weights and biases of the first linear layer
       <$> sample LinearSpec
+      -- randomly initialize the weights and biases of the second linear layer
       <*> sample LinearSpec
 
-  let optim = mkAdam 0 0.9 0.999 (flattenParameters model)
-      maxLearningRate = 1e-1
-      finalLearningRate = 1e-6
+  let -- use the stochastic gradient descent optimization algorithm where `params <- params - learningRate * gradients`
+      -- optim = mkGD
+
+      -- use the Adam optimization algorithm, see https://arxiv.org/abs/1412.6980
+      optim = mkAdam 0 0.9 0.999 (flattenParameters model)
+
+  let maxLearningRate = 1e-2
+      finalLearningRate = 1e-4
       numEpochs = 100
       numWarmupEpochs = 10
-      numExplorationEpochs = 20
+      numCooldownEpochs = 10
       learningRateSchedule epoch
-        | epoch <= 0 = 0
+        | epoch <= 0 = 0.0
         | 0 < epoch && epoch <= numWarmupEpochs =
           let a :: Float = fromIntegral epoch / fromIntegral numWarmupEpochs
            in mulScalar a maxLearningRate
-        | numWarmupEpochs < epoch && epoch < numEpochs - numExplorationEpochs =
+        | numWarmupEpochs < epoch && epoch < numEpochs - numCooldownEpochs =
           let a :: Float =
-                fromIntegral (numEpochs - numExplorationEpochs - epoch)
-                  / fromIntegral (numEpochs - numExplorationEpochs - numWarmupEpochs)
+                fromIntegral (numEpochs - numCooldownEpochs - epoch)
+                  / fromIntegral (numEpochs - numCooldownEpochs - numWarmupEpochs)
            in mulScalar a maxLearningRate + mulScalar (1 - a) finalLearningRate
         | otherwise = finalLearningRate
 
@@ -170,25 +178,31 @@ main = do
     getStdGen
       >>= evalStateT
         ( (,,)
+            -- create a dataset of 10000 unique training examples
             <$> mkSincData "training" 10000
+              -- create a dataset of 500 unique evaluation examples
               <*> mkSincData "evaluation" 500
+              -- configure the data loader for shuffling
               <*> gets (\g -> (mapStyleOpts 1) {shuffle = Shuffle g})
         )
 
-  let stats model trainingLosses evaluationLosses options = do
+  let stats model learningRate trainingLosses evaluationLosses learningRates options = do
+        learningRates <- pure $ toFloat learningRate : learningRates
         (trainingLoss, options) <- evaluate' model options trainingData
         (evaluationLoss, options) <- evaluate' model options evaluationData
         trainingLosses <- pure $ trainingLoss : trainingLosses
         evaluationLosses <- pure $ evaluationLoss : evaluationLosses
-        plot "plot.html" (infer' model) trainingLosses evaluationLosses evaluationData
-        pure (trainingLosses, evaluationLosses, options)
-      step (model, optim, trainingLosses, evaluationLosses, options) epoch = do
-        (model, optim, options) <- train' model optim (learningRateSchedule epoch) options trainingData
-        (trainingLosses, evaluationLosses, options) <- stats model trainingLosses evaluationLosses options
-        pure (model, optim, trainingLosses, evaluationLosses, options)
+        plot "plot.html" (infer' model) trainingLosses evaluationLosses learningRates evaluationData
+        pure (trainingLosses, evaluationLosses, learningRates, options)
+      step (model, optim, trainingLosses, evaluationLosses, learningRates, options) epoch = do
+        let learningRate = learningRateSchedule epoch
+        (model, optim, options) <- train' model optim learningRate options trainingData
+        (trainingLosses, evaluationLosses, learningRates, options) <- stats model learningRate trainingLosses evaluationLosses learningRates options
+        pure (model, optim, trainingLosses, evaluationLosses, learningRates, options)
       init = do
-        (trainingLosses, evaluationLosses, options) <- stats model [] [] options
-        pure (model, optim, trainingLosses, evaluationLosses, options)
+        let learningRate = learningRateSchedule 0
+        (trainingLosses, evaluationLosses, learningRates, options) <- stats model learningRate [] [] [] options
+        pure (model, optim, trainingLosses, evaluationLosses, learningRates, options)
       done = pure
   void . evalContT . P.foldM step init done . P.each $ [1 .. numEpochs]
 
@@ -220,25 +234,27 @@ plot ::
   ([Float] -> ContT r IO [([Float], [Float])]) ->
   [Float] ->
   [Float] ->
+  [Float] ->
   SincData ->
   ContT r IO ()
-plot file infer trainingLosses evaluationLosses sincData = do
+plot file infer trainingLosses evaluationLosses learningRates sincData = do
   let xs = [-20, -19.95 .. 20]
+      epochs = [0, 1 ..]
       mkDataRow x y =
         dataRow
           [ ("x", Number . float2Double $ x),
             ("y", Number . float2Double $ y)
           ]
-  prediction <- do
+  predictionData <- do
     rawRows <- infer xs
     let f rawRow dataRows = do
           case rawRow of
             ([x], [y]) -> pure $ mkDataRow x y dataRows
             _ -> fail "invalid list shape(s)"
      in dataFromRows [] <$> foldrM f [] rawRows
-  let evaluation = dataFromRows [] . foldr (uncurry mkDataRow) [] . unSincData $ sincData
-  let target = dataFromRows [] . foldr (mkDataRow `ap` sinc) [] $ xs
-  let losses =
+  let evaluationData = dataFromRows [] . foldr (uncurry mkDataRow) [] . unSincData $ sincData
+  let targetData = dataFromRows [] . foldr (mkDataRow `ap` sinc) [] $ xs
+  let lossData =
         let mkDataRows title losses =
               zipWith
                 ( \epoch loss ->
@@ -248,16 +264,29 @@ plot file infer trainingLosses evaluationLosses sincData = do
                         ("loss", Number . float2Double $ loss)
                       ]
                 )
-                [0, 1 ..]
+                epochs
                 (reverse losses)
          in dataFromRows [] . foldr id [] $
               mkDataRows "training" trainingLosses
                 <> mkDataRows "evaluation" evaluationLosses
+  let learningRateData =
+        let dataRows =
+              zipWith
+                ( \epoch learningRate ->
+                    dataRow
+                      [ ("epoch", Number . fromInteger $ epoch),
+                        ("learning_rate", Number . float2Double $ learningRate)
+                      ]
+                )
+                epochs
+                (reverse learningRates)
+         in dataFromRows [] . foldr id [] $ dataRows
   lift . toHtmlFile file . mkVegaLite . datasets $
-    [ (("prediction", prediction)),
-      (("evaluation", evaluation)),
-      (("target", target)),
-      (("losses"), losses)
+    [ ("prediction", predictionData),
+      ("evaluation", evaluationData),
+      ("target", targetData),
+      ("losses", lossData),
+      ("learning_rates", learningRateData)
     ]
 
 collate ::
@@ -343,10 +372,10 @@ mkVegaLite dataset =
 
       encLosses =
         encoding
-          . position X [PName "epoch", PmType Quantitative, PScale scaleOptsLosses]
+          . position X [PName "epoch", PmType Quantitative, PScale scaleOptsEpoch]
           . position Y [PName "loss", PmType Quantitative, PScale [SType ScLog]]
           . color [MName "title", MmType Nominal, MLegend [LTitle "", LOrient LOBottom]]
-      scaleOptsLosses = [SDomain (DNumbers [0, 100]), SNice (IsNice False)]
+      scaleOptsEpoch = [SDomain (DNumbers [0, 100]), SNice (IsNice False)]
       losses =
         asSpec
           [ dataFromSource "losses" [],
@@ -355,7 +384,20 @@ mkVegaLite dataset =
             w,
             h
           ]
+
+      encLearningRate =
+        encoding
+          . position X [PName "epoch", PmType Quantitative, PScale scaleOptsEpoch]
+          . position Y [PName "learning_rate", PTitle "learning rate", PmType Quantitative]
+      learningRates =
+        asSpec
+          [ dataFromSource "learning_rates" [],
+            encLearningRate [],
+            mark Line [],
+            w,
+            h
+          ]
    in toVegaLite
         [ dataset,
-          vConcat [overview, losses]
+          vConcat [overview, losses, learningRates]
         ]
