@@ -1,17 +1,18 @@
 module Main where
 
+import Prelude hiding (atan, filter)
 import qualified Control.Foldl as L
 import Control.Lens (element, view, (^?))
-import Control.Monad (ap, foldM_, replicateM, void, when)
+import Control.Monad (ap, replicateM, void)
 import Control.Monad.Trans.Class (MonadTrans (lift))
-import Control.Monad.Trans.Cont (ContT (..), cont, evalContT)
-import Control.Monad.Trans.State (StateT, evalStateT, gets, runState, runStateT, state)
+import Control.Monad.Trans.Cont (ContT (..), evalContT)
+import Control.Monad.Trans.State (StateT (..), evalStateT, gets, state)
 import Data.Foldable (foldrM)
 import Data.Maybe (listToMaybe)
 import Data.Random.Normal (normal)
 import qualified Data.Set as Set
 import Data.Text (Text, unpack)
-import GHC.Exts (IsList (fromList), Item, toList)
+import GHC.Exts (IsList (..), Item)
 import GHC.Float (float2Double)
 import GHC.Generics
 import GHC.TypeLits
@@ -24,9 +25,7 @@ import System.Random (Random, RandomGen, getStdGen, random)
 import Torch.Data.Internal (fromInput', toOutput', withBufferLifted)
 import Torch.Data.Pipeline (Dataset (..), MapStyleOptions (..), Sample (..), makeListT, mapStyleOpts)
 import Torch.Data.StreamedPipeline (ListT (enumerate), MonadBaseControl)
-import Torch.Internal.Managed.Type.Context (manual_seed_L)
 import Torch.Typed hiding (DType, Device, shape, sin)
-import Prelude hiding (atan, filter)
 
 type DType = 'Float
 
