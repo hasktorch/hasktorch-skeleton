@@ -5,7 +5,7 @@ packages:
 
 extra-deps:
 - git: git://github.com/hasktorch/hasktorch.git
-  commit: 221226c250c09492a7c224af80a6705feddc0702
+  commit: b13b4554db11becfd8ebecef892294a7bafb6295
   subdirs:
     - libtorch-ffi-helper
     - libtorch-ffi
