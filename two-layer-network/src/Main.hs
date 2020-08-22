@@ -23,7 +23,7 @@ import qualified Pipes.Prelude as P
 import System.Random (Random, RandomGen, getStdGen, random)
 import Torch.Data.Internal (fromInput', toOutput', withBufferLifted)
 import Torch.Data.Pipeline (Dataset (..), MapStyleOptions (..), Sample (..), makeListT, mapStyleOpts)
-import Torch.Data.StreamedPipeline (ListT (enumerate), MonadBaseControl)
+import Torch.Data.StreamedPipeline (MonadBaseControl)
 import Torch.Typed hiding (DType, Device, shape, sin)
 import Prelude hiding (filter, tanh)
 
@@ -94,7 +94,7 @@ train ::
   -- | learning rate, 'LearningRate device dtype' is a type alias for 'Tensor device dtype '[]'
   LearningRate device dtype ->
   -- | stream of training examples consisting of inputs, outputs, and an iteration counter
-  ListT IO (Tensor device dtype shape, Tensor device dtype shape, Int) ->
+  P.ListT IO (Tensor device dtype shape, Tensor device dtype shape, Int) ->
   -- | final model and optimizer
   IO (model, optim)
 train model optim learningRate examples =
@@ -114,7 +114,7 @@ train model optim learningRate examples =
       -- trivial extraction function
       done = pure
    in -- training is a fold over the 'examples' stream
-      P.foldM step init done . enumerate $ examples
+      P.foldM step init done . P.enumerate $ examples
 
 -- | Evaluate the model
 evaluate ::
@@ -123,7 +123,7 @@ evaluate ::
   -- | model to be evaluated
   model ->
   -- | stream of evaluation examples consisting of inputs, outputs, and an iteration counter
-  ListT m (Tensor device DType (batchSize ': shape), Tensor device DType (batchSize ': shape), Int) ->
+  P.ListT m (Tensor device DType (batchSize ': shape), Tensor device DType (batchSize ': shape), Int) ->
   m Float
 evaluate model examples =
   let -- evaluation step function
@@ -139,7 +139,7 @@ evaluate model examples =
         let scale x = x / (fromInteger . toInteger $ iter + natValI @batchSize)
          in pure $ scale loss
    in -- like training, evaluation is a fold over the 'examples' stream
-      P.foldM step init done . enumerate $ examples
+      P.foldM step init done . P.enumerate $ examples
 
 -- | Run inference using a trained model
 infer ::
@@ -147,20 +147,10 @@ infer ::
   -- | model to use for inference
   model ->
   -- | stream of inputs to run inference on
-  ListT m (Tensor device DType shape) ->
-  -- | list of input and output pairs
-  m [([Float], [Float])]
-infer model inputs =
-  let -- inference step function
-      step rows x = do
-        let y' = forward model $ x
-        pure (rows ++ zip (toList . Just $ x) (toList . Just $ y'))
-      -- initial inference state
-      init = pure []
-      -- trivial extraction function
-      done = pure
-   in -- like training and evaluation, inference is a fold over the 'inputs' stream
-      P.foldM step init done . enumerate $ inputs
+  P.ListT m (Tensor device DType shape) ->
+  -- | stream of input and output pairs
+  P.ListT m (Tensor device DType shape, Tensor device DType shape)
+infer model (P.Select inputs) = P.Select $ inputs P.>-> P.map (\x -> (x, forward model x))
 
 -- | Batch size
 type BatchSize = 100
@@ -269,9 +259,9 @@ evaluate' model options sincData = do
   lift . putStrLn $ "Average " <> unpack (name sincData) <> " loss: " <> show loss
   pure (loss, options {shuffle = shuffle})
 
-infer' :: _ => model -> [Float] -> ContT r IO [([Float], [Float])]
+infer' :: _ => model -> [Float] -> ContT r IO [(Float, Float)]
 infer' model xs =
-  lift . infer model
+  lift . P.toListM . P.enumerate . disperse . infer model
     =<< collate' @BatchSize @Device @DType 1 (P.Select . P.each $ xs)
 
 plot ::
@@ -279,7 +269,7 @@ plot ::
   -- | output file path
   FilePath ->
   -- | inference continuation
-  ([Float] -> ContT r IO [([Float], [Float])]) ->
+  ([Float] -> ContT r IO [(Float, Float)]) ->
   -- | training losses
   [Float] ->
   -- | evaluation losses
@@ -300,11 +290,7 @@ plot file infer trainingLosses evaluationLosses learningRates sincData = do
           ]
   predictionData <- do
     rawRows <- infer xs
-    let f rawRow dataRows = do
-          case rawRow of
-            ([x], [y]) -> pure $ mkDataRow x y dataRows
-            _ -> fail "invalid list shape(s)"
-     in dataFromRows [] <$> foldrM f [] rawRows
+    pure . dataFromRows [] . foldr (uncurry mkDataRow) [] $ rawRows
   let evaluationData = dataFromRows [] . foldr (uncurry mkDataRow) [] . unSincData $ sincData
   let targetData = dataFromRows [] . foldr (mkDataRow `ap` sinc) [] $ xs
   let lossData =
@@ -346,8 +332,8 @@ collate ::
   forall batchSize device dtype r m.
   (KnownNat batchSize, KnownDevice device, ComputeHaskellType dtype ~ Float, MonadBaseControl IO m) =>
   Int ->
-  ListT m ((Float, Float), Int) ->
-  ContT r m (ListT m (Tensor device dtype '[batchSize, 1], Tensor device dtype '[batchSize, 1], Int))
+  P.ListT m ((Float, Float), Int) ->
+  ContT r m (P.ListT m (Tensor device dtype '[batchSize, 1], Tensor device dtype '[batchSize, 1], Int))
 collate n = bufferedCollate (P.bounded n) (natValI @batchSize) f
   where
     f exs =
@@ -355,12 +341,25 @@ collate n = bufferedCollate (P.bounded n) (natValI @batchSize) f
           (xs, ys) = unzip xys
        in (,,) <$> fromList (pure <$> xs) <*> fromList (pure <$> ys) <*> listToMaybe iters
 
+disperse ::
+  forall batchSize device dtype m.
+  (KnownNat batchSize, KnownDevice device, ComputeHaskellType dtype ~ Float, Functor m) =>
+  P.ListT m (Tensor device dtype '[batchSize, 1], Tensor device dtype '[batchSize, 1]) ->
+  P.ListT m (Float, Float)
+disperse (P.Select xs) = P.Select $ P.for xs (P.each . uncurry f)
+  where
+    f x y = do
+      xs <- zip (toList . Just $ x) (toList . Just $ y)
+      case xs of
+        ([x], [y]) -> pure (x, y)
+        _ -> mempty
+
 collate' ::
   forall batchSize device dtype r m.
   (KnownNat batchSize, KnownDevice device, ComputeHaskellType dtype ~ Float, MonadBaseControl IO m) =>
   Int ->
-  ListT m Float ->
-  ContT r m (ListT m (Tensor device dtype '[batchSize, 1]))
+  P.ListT m Float ->
+  ContT r m (P.ListT m (Tensor device dtype '[batchSize, 1]))
 collate' n = bufferedCollate (P.bounded n) (natValI @batchSize) f
   where
     f xs = fromList (pure <$> xs)
@@ -371,8 +370,8 @@ bufferedCollate ::
   P.Buffer b ->
   Int ->
   ([a] -> Maybe b) ->
-  ListT m a ->
-  ContT r m (ListT m b)
+  P.ListT m a ->
+  ContT r m (P.ListT m b)
 bufferedCollate buffer batchSize f as = ContT $ \g ->
   snd
     <$> withBufferLifted
@@ -380,7 +379,7 @@ bufferedCollate buffer batchSize f as = ContT $ \g ->
       fOutput
       (g . P.Select . fromInput')
   where
-    fOutput output = P.runEffect $ (P.>-> (toOutput' output)) . (P.>-> P.mapMaybe f) . L.purely P.folds L.list . view (P.chunksOf batchSize) . enumerate $ as
+    fOutput output = P.runEffect $ (P.>-> (toOutput' output)) . (P.>-> P.mapMaybe f) . L.purely P.folds L.list . view (P.chunksOf batchSize) . P.enumerate $ as
 
 mkVegaLite :: Data -> VegaLite
 mkVegaLite dataset =
