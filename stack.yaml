@@ -1,14 +1,19 @@
 resolver: lts-15.5
 
+compiler: ghc-8.8.4
+
 packages:
 - .
 
 extra-deps:
 - git: git://github.com/hasktorch/hasktorch.git
-  commit: 221226c250c09492a7c224af80a6705feddc0702
+  commit: b13b4554db11becfd8ebecef892294a7bafb6295
   subdirs:
     - libtorch-ffi-helper
     - libtorch-ffi
     - hasktorch
+- stm-2.5.0.0@sha256:c238075f9f0711cd6a78eab6001b3e218cdaa745d6377bf83cc21e58ceec2ea1,2100
+
 nix:
   shell-file: nix/stack-shell.nix
+
