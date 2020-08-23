@@ -8,3 +8,4 @@ result*
 *.lock
 **/.DS_Store
 *.pt
+plot.html
