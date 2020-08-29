@@ -37,6 +37,7 @@ common config
                      , StandaloneDeriving
                      , RecordWildCards
                      , OverloadedStrings
+                     , DeriveAnyClass
                     --  , OverloadedLists
   ghc-options:         -Wno-partial-type-signatures
                        -fplugin GHC.TypeLits.Normalise

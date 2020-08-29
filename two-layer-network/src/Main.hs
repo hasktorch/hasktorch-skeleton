@@ -70,7 +70,7 @@ data TwoLayerNet (numIn :: Nat) (numOut :: Nat) (numHidden :: Nat) = TwoLayerNet
   { linear1 :: Linear numIn numHidden DType Device, -- first linear layer
     linear2 :: Linear numHidden numOut DType Device -- second linear layer
   }
-  deriving (Show, Generic)
+  deriving (Show, Generic, Parameterized)
 
 -- | 'HasForward' instance used to define the batched forward pass of the model
 instance
@@ -83,6 +83,7 @@ instance
     -- call the linear forward function on the 'Linear' datatypes
     -- and sandwich a 'tanh' activation function in between
     forward linear2 . tanh . forward linear1
+  forwardStoch = (pure .) . forward
 
 -- | Train the model for one epoch
 train ::
@@ -184,7 +185,7 @@ main = do
       numWarmupEpochs = 10
       numCooldownEpochs = 10
 
-      -- learning rate schedule
+      -- single-cycle learning rate schedule, see for instance https://arxiv.org/abs/1803.09820
       learningRateSchedule epoch
         | epoch <= 0 = 0.0
         | 0 < epoch && epoch <= numWarmupEpochs =
@@ -205,7 +206,7 @@ main = do
             <$> mkSincData "training" 10000
               -- create a dataset of 500 unique evaluation examples
               <*> mkSincData "evaluation" 500
-              -- configure the data loader for shuffling
+              -- configure the data loader for random shuffling
               <*> gets (\g -> (mapStyleOpts 1) {shuffle = Shuffle g})
         )
 
