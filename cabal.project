@@ -21,3 +21,15 @@ source-repository-package
     tag: 35e447da733c3430cd4a181c0e1d1b029b68e942
     --sha256: 1sc0ffjk3drnsc87vp112dlcni8wxsa2895ib40qgann7jrlm7gz
     subdir: hasktorch
+
+source-repository-package
+    type: git
+    location: https://github.com/digitallyinduced/ihp
+    tag: 0de7dcb50c5805715e2d26b382cbc9f9188ab5ce
+    --sha256: 1jhx1qzaicmh0sx2m5ida97ky9v1wngqhlba96gnnnybf3vk7pg3
+
+source-repository-package
+    type: git
+    location: https://github.com/tippenein/countable-inflections
+    tag: 7526fc8c17edc2d951a86c13659dd8206f5c2efa
+    --sha256: 0d0s81mnv8rava611h4n065ghkr4r50xjlxh5gq683cv51d33kgr

@@ -12,7 +12,7 @@ category:            Tensors, Machine Learning, AI
 build-type:          Simple
 extra-doc-files:     README.md
                    , CHANGELOG.md
-tested-with:         GHC == 8.8.3
+tested-with:         GHC == 8.8.4
 
 library
   hs-source-dirs:    src
@@ -20,7 +20,58 @@ library
 
   build-depends:     base >= 4.7 && < 5
                    , hasktorch >= 0.2 && < 0.3
+                   , ihp
+                   , base
+                   , classy-prelude
+                   , directory
+                   , free
+                   , string-conversions
+                   , warp
+                   , wai
+                   , mtl
+                   , blaze-html
+                   , blaze-markup
+                   , wai-extra
+                   , wai
+                   , http-types
+                   , blaze-html
+                   , mtl
+                   , inflections
+                   , text
+                   , postgresql-simple
+                   , wai-middleware-static
+                   , wai-util, http-conduit
+                   , tagsoup
+                   , http-client
+                   , bytestring
+                   , network-uri
+                   , aeson
+                   , wai-session
+                   , wai-session-clientsession
+                   , clientsession
+                   , pwstore-fast
+                   , vault
+                   , data-default
+                   , linklater
+                   , random-strings
+                   , uuid
+                   , time
+                   , parsec
                      
   ghc-options:       -Wall
 
   default-language:  Haskell2010
+
+  extensions:        OverloadedStrings
+                   , NoImplicitPrelude
+                   , ImplicitParams
+                   , RankNTypes
+                   , NamedFieldPuns
+                   , TypeSynonymInstances
+                   , FlexibleInstances
+                   , DisambiguateRecordFields
+                   , DuplicateRecordFields
+                   , OverloadedLabels
+                   , FlexibleContexts
+                   , DataKinds
+                   , TypeApplications
