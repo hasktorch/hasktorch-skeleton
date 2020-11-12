@@ -22,7 +22,7 @@ import qualified Pipes.Group as P
 import qualified Pipes.Prelude as P
 import System.Random (Random, RandomGen, getStdGen, random)
 import Torch.Data.Internal (fromInput', toOutput', withBufferLifted)
-import Torch.Data.Pipeline (Dataset (..), MapStyleOptions (..), Sample (..), makeListT, mapStyleOpts)
+import Torch.Data.Pipeline (Dataset (..), DatasetOptions (..), Sample (..), streamFromMap, datasetOpts)
 import Torch.Data.StreamedPipeline (MonadBaseControl)
 import Torch.Typed hiding (DType, Device, shape, sin)
 import Prelude hiding (filter, tanh)
@@ -59,7 +59,7 @@ mkSincData name size =
    in SincData name <$> replicateM size next
 
 -- | 'Dataset' instance used for streaming sine cardinal (sinc) examples
-instance MonadFail m => Dataset m SincData Int (Float, Float) where
+instance Dataset IO SincData Int (Float, Float) where
   getItem (SincData _ d) k = maybe (fail "invalid key") pure $ d ^? element k
   keys (SincData _ d) = Set.fromList [0 .. Prelude.length d -1]
 
@@ -207,7 +207,7 @@ main = do
               -- create a dataset of 500 unique evaluation examples
               <*> mkSincData "evaluation" 500
               -- configure the data loader for random shuffling
-              <*> gets (\g -> (mapStyleOpts 1) {shuffle = Shuffle g})
+              <*> gets (\g -> (datasetOpts 1) {shuffle = Shuffle g})
         )
 
   let -- generate statistics and plots for each epoch
@@ -243,20 +243,20 @@ main = do
   -- save the model weights to a file and end program
   save (hmap' ToDependent . flattenParameters $ model) "model.pt"
 
-train' :: _ => model -> optim -> LearningRate device dtype -> MapStyleOptions -> dataset -> ContT r IO (model, optim, MapStyleOptions)
+train' :: _ => model -> optim -> LearningRate device dtype -> DatasetOptions -> dataset -> ContT r IO (model, optim, DatasetOptions)
 train' model optim learningRate options sincData = do
-  (examples, shuffle) <- makeListT options sincData
+  (examples, shuffle) <- streamFromMap options sincData
   (model, optim) <-
     lift . train model optim learningRate
-      =<< collate @BatchSize 1 examples
+      =<< Main.collate @BatchSize 1 (P.Select $ P.zip (P.enumerate examples) (P.each [0..]))
   pure (model, optim, options {shuffle = shuffle})
 
-evaluate' :: _ => model -> MapStyleOptions -> SincData -> ContT r IO (Float, MapStyleOptions)
+evaluate' :: _ => model -> DatasetOptions -> SincData -> ContT r IO (Float, DatasetOptions)
 evaluate' model options sincData = do
-  (examples, shuffle) <- makeListT options sincData
+  (examples, shuffle) <- streamFromMap options sincData
   loss <-
     lift . evaluate model
-      =<< collate @BatchSize @Device 1 examples
+      =<< Main.collate @BatchSize @Device 1 (P.Select $ P.zip (P.enumerate examples) (P.each [0..]))
   lift . putStrLn $ "Average " <> unpack (name sincData) <> " loss: " <> show loss
   pure (loss, options {shuffle = shuffle})
 
@@ -335,7 +335,7 @@ collate ::
   Int ->
   P.ListT m ((Float, Float), Int) ->
   ContT r m (P.ListT m (Tensor device dtype '[batchSize, 1], Tensor device dtype '[batchSize, 1], Int))
-collate n = bufferedCollate (P.bounded n) (natValI @batchSize) f
+collate n = Main.bufferedCollate (P.bounded n) (natValI @batchSize) f
   where
     f exs =
       let (xys, iters) = unzip exs
@@ -361,7 +361,7 @@ collate' ::
   Int ->
   P.ListT m Float ->
   ContT r m (P.ListT m (Tensor device dtype '[batchSize, 1]))
-collate' n = bufferedCollate (P.bounded n) (natValI @batchSize) f
+collate' n = Main.bufferedCollate (P.bounded n) (natValI @batchSize) f
   where
     f xs = fromList (pure <$> xs)
 
