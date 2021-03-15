@@ -19,17 +19,16 @@ assert cudaSupport -> (cudaMajorVersion == "9" || cudaMajorVersion == "10" || cu
 let
   sources = import ./sources.nix { inherit pkgs; }
     // sourcesOverride;
-  iohKNix = import sources.iohk-nix {};
-  haskellNix = (import sources.haskell-nix { inherit system sourcesOverride; }).nixpkgsArgs;
-  # use our own nixpkgs if it exist in our sources,
-  # otherwise use iohkNix default nixpkgs.
-  nixpkgs = sources.nixpkgs-staging-next or
-    (builtins.trace "Using IOHK default nixpkgs" iohKNix.nixpkgs);
+  iohkNix = import sources.iohk-nix {};
+  haskellNix = import sources.haskell-nix { inherit system sourcesOverride; };
+
+  # Use haskell.nix default nixpkgs
+  nixpkgsSrc = haskellNix.sources.nixpkgs-2009;
 
   # for inclusion in pkgs:
   overlays =
     # Haskell.nix (https://github.com/input-output-hk/haskell.nix)
-    haskellNix.overlays
+    haskellNix.nixpkgsArgs.overlays
     # override Haskell.nix hackage and stackage sources
     ++ [
       (pkgsNew: pkgsOld: let inherit (pkgsNew) lib; in {
@@ -40,9 +39,9 @@ let
       })
     ]
     # the haskell-nix.haskellLib.extra overlay contains some useful extra utility functions for haskell.nix
-    ++ iohKNix.overlays.haskell-nix-extra
+    ++ iohkNix.overlays.haskell-nix-extra
     # the iohkNix overlay contains nix utilities and niv
-    ++ iohKNix.overlays.iohkNix
+    ++ iohkNix.overlays.iohkNix
     # libtorch overlays from pytorch-world
     # TODO: pull in libGL_driver and cudatoolkit as done in https://github.com/NixOS/nixpkgs/blob/master/pkgs/games/katago/default.nix
     ++ [
@@ -90,15 +89,15 @@ let
         commonLib = lib // iohkNix
           // import ./util.nix { inherit haskell-nix; }
           # also expose sources, nixpkgs and overlays
-          // { inherit overlays sources nixpkgs; };
+          // { inherit overlays sources nixpkgsSrc; };
       })
       # haskell-nix-ified hasktorch cabal project:
       (import ./pkgs.nix)
     ];
 
-  pkgs = import nixpkgs {
+  pkgs = import nixpkgsSrc {
     inherit system crossSystem overlays;
-    config = haskellNix.config // config;
+    config = haskellNix.nixpkgsArgs.config // config;
   };
 
 in pkgs
