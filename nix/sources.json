@@ -59,42 +59,6 @@
         "url": "https://github.com/nmattia/niv/archive/ba57d5a29b4e0f2085917010380ef3ddc3cf380f.tar.gz",
         "url_template": "https://github.com/<owner>/<repo>/archive/<rev>.tar.gz"
     },
-    "nixpkgs-2003": {
-        "branch": "nixpkgs-20.03-darwin",
-        "description": "Nix Packages collection",
-        "homepage": null,
-        "owner": "NixOS",
-        "repo": "nixpkgs",
-        "rev": "732684b720f829056dcb62380c2c17e4d3ebd947",
-        "sha256": "1fyrgpgpn906c96bhm4ad5n4qq27flhnfpiv395iryk3zsyig4dk",
-        "type": "tarball",
-        "url": "https://github.com/NixOS/nixpkgs/archive/732684b720f829056dcb62380c2c17e4d3ebd947.tar.gz",
-        "url_template": "https://github.com/<owner>/<repo>/archive/<rev>.tar.gz"
-    },
-    "nixpkgs-2009": {
-        "branch": "nixpkgs-20.09-darwin",
-        "description": "Nix Packages collection",
-        "homepage": null,
-        "owner": "NixOS",
-        "repo": "nixpkgs",
-        "rev": "07e5844fdf6fe99f41229d7392ce81cfe191bcfc",
-        "sha256": "0p2z6jidm4rlp2yjfl553q234swj1vxl8z0z8ra1hm61lfrlcmb9",
-        "type": "tarball",
-        "url": "https://github.com/NixOS/nixpkgs/archive/07e5844fdf6fe99f41229d7392ce81cfe191bcfc.tar.gz",
-        "url_template": "https://github.com/<owner>/<repo>/archive/<rev>.tar.gz"
-    },
-    "nixpkgs-staging-next": {
-        "branch": "staging-next",
-        "description": "Nix Packages collection",
-        "homepage": null,
-        "owner": "NixOS",
-        "repo": "nixpkgs",
-        "rev": "986c2d36da97856f392dd66d265b7646b32fa3b9",
-        "sha256": "1ickrri9c0vkicsl7k67vv909w6rxlndq7rss29ann7xvlla46rj",
-        "type": "tarball",
-        "url": "https://github.com/NixOS/nixpkgs/archive/986c2d36da97856f392dd66d265b7646b32fa3b9.tar.gz",
-        "url_template": "https://github.com/<owner>/<repo>/archive/<rev>.tar.gz"
-    },
     "pytorch-world": {
         "branch": "unstable",
         "description": "nix scripts for pytorch-related libraries",
