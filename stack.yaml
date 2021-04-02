@@ -1,6 +1,6 @@
 resolver: nightly-2020-12-14
 
-compiler: ghc-8.10.2
+compiler: ghc-8.10.4
 
 packages:
 - .
