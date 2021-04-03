@@ -1,4 +1,4 @@
-cabal-version:       2.1
+cabal-version:       1.24
 name:                hasktorch-skeleton
 version:             0.0.0.0
 synopsis:            See README for more info
