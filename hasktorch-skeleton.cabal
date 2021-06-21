@@ -1,4 +1,4 @@
-cabal-version:       1.24
+cabal-version:       2.2
 name:                hasktorch-skeleton
 version:             0.0.0.0
 synopsis:            See README for more info
@@ -14,13 +14,25 @@ extra-doc-files:     README.md
                    , CHANGELOG.md
 tested-with:         GHC == 8.8.3
 
+common base
+  ghc-options: -Wall -Wextra -Wno-unrecognised-pragmas -Wno-orphans
+  default-language: Haskell2010
+  build-depends:
+      base >= 4.12 && < 5
+    , hasktorch >= 0.2 && < 0.3
+
+common binary-base
+  import: base
+  ghc-options: -threaded -rtsopts -with-rtsopts=-N
+  build-depends: hasktorch-skeleton
+
 library
-  hs-source-dirs:    src
-  exposed-modules:   HasktorchSkeleton
+  import: base
+  exposed-modules:
+    HasktorchSkeleton
+  hs-source-dirs: src
 
-  build-depends:     base >= 4.7 && < 5
-                   , hasktorch >= 0.2 && < 0.3
-                     
-  ghc-options:       -Wall
-
-  default-language:  Haskell2010
+executable example
+  import: binary-base
+  main-is: Main.hs
+  hs-source-dirs: exe
