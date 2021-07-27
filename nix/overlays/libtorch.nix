@@ -25,7 +25,7 @@ else if cudaSupport && cudaMajorVersion == "10" then
     torch_cuda = libtorch;
   }
 else if cudaSupport && cudaMajorVersion == "11" then
-  let libtorch = libtorchSrc.libtorch_cudatoolkit_11_0; in
+  let libtorch = libtorchSrc.libtorch_cudatoolkit_11_1; in
   {
     c10 = libtorch;
     torch = libtorch;
