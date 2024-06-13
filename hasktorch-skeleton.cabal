@@ -1,4 +1,4 @@
-cabal-version:       2.2
+cabal-version:       3.0
 name:                hasktorch-skeleton
 version:             0.0.0.0
 synopsis:            See README for more info
@@ -12,13 +12,13 @@ category:            Tensors, Machine Learning, AI
 build-type:          Simple
 extra-doc-files:     README.md
                    , CHANGELOG.md
-tested-with:         GHC == 8.8.3
+tested-with:         GHC == 9.6.5
 
 common base
   ghc-options: -Wall -Wextra -Wno-unrecognised-pragmas -Wno-orphans
   default-language: Haskell2010
   build-depends:
-      base >= 4.12 && < 5
+      base >= 4.18 && < 5
     , hasktorch >= 0.2 && < 0.3
 
 common binary-base
