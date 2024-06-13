@@ -1,6 +1,15 @@
 {
+  nixConfig = {
+    extra-substituters = [
+      "https://hasktorch.cachix.org"
+    ];
+    extra-trusted-public-keys = [
+      "hasktorch.cachix.org-1:wLjNS6HuFVpmzbmv01lxwjdCOtWRD8pQVR3Zr/wVoQc="
+    ];
+  };
+
   inputs = {
-    hasktorch.url = "github:collinarnett/hasktorch/cabal2nix";
+    hasktorch.url = "github:hasktorch/hasktorch";
     flake-parts.url = "github:hercules-ci/flake-parts";
     nixpkgs.follows = "hasktorch/nixpkgs";
   };
@@ -33,8 +42,7 @@
           };
         };
         packages.default =
-          pkgs.haskell.lib.disableLibraryProfiling
-          (pkgs.haskell.packages.${ghc}.callCabal2nix "example" ./. {});
+          pkgs.haskell.packages.${ghc}.callCabal2nix "example" ./. {};
         devShells.default = pkgs.haskell.packages.${ghc}.shellFor {
           packages = ps: [
             (ps.callCabal2nix "example" ./. {})
