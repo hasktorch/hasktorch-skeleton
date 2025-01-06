@@ -1,20 +1,13 @@
-resolver: nightly-2020-12-14
+resolver: lts-22.43
 
-compiler: ghc-8.10.4
+# compiler: ghc-9.6.6
 
 packages:
 - .
 
-extra-deps:
-- git: git://github.com/hasktorch/hasktorch.git
-  commit: d7dd1f0a83971621526caf80c0dfafc5eb0bc8be
-  subdirs:
-    - libtorch-ffi-helper
-    - libtorch-ffi
-    - hasktorch
-- stm-2.5.0.0@sha256:c238075f9f0711cd6a78eab6001b3e218cdaa745d6377bf83cc21e58ceec2ea1,2100
+allow-newer: true
+
+system-ghc: true
 
 nix:
-  shell-file: nix/stack-shell.nix
-
-allow-newer: true
+  enable: false
