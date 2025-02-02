@@ -4,7 +4,7 @@
   };
   inputs = {
     utils.url = "github:numtide/flake-utils";
-    nixpkgs.url = "github:junjihashimoto/nixpkgs?rev=5c77923028d8ec6c54dc9820e44bced372c68f3d";
+    nixpkgs.url = "github:nixos/nixpkgs?rev=01d7c7caba0f021e986f7e46fae3c8e41265a145";
   };
 
   outputs = { self, nixpkgs, utils  }:
@@ -14,6 +14,9 @@
           inherit system;
           config.allowUnfree = true;
           config.cudaSupport = system == "x86_64-linux";
+          # config.ihaskell.packages = pkgs: with pkgs; [
+          #   hasktorch
+          # ];
         };
         ghcWithHasktorch = pkgs.haskellPackages.ghcWithPackages (pkgs: with pkgs; [
           hasktorch
@@ -26,6 +29,7 @@
             ghcWithHasktorch
             cabal-install
             stack
+            # ihaskell
           ];
           shellHook = ''
             source ${git}/share/bash-completion/completions/git-prompt.sh
