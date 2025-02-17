@@ -1,6 +1,6 @@
 resolver: lts-23.7
 
-# compiler: ghc-9.8.4
+compiler: ghc-9.8.4
 
 packages:
 - .
@@ -11,3 +11,10 @@ system-ghc: true
 
 nix:
   enable: false
+
+extra-deps:
+  - streaming-commons-0.2.2.6
+  - conduit-extra-1.3.6
+  - constraints-extras-0.4.0.1
+  - megaparsec-9.7.0
+  - psqueues-0.2.8.0
