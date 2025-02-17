@@ -4,9 +4,20 @@ on: [push, pull_request]
 
 jobs:
   build:
-
     runs-on: ubuntu-latest
     steps:
     - uses: actions/checkout@v2
+    - name: free disk space
+      run: |
+        sudo swapoff -a
+        sudo rm -f /swapfile
+        sudo apt -y purge ghc* cabal-install* php* || true
+        sudo apt autoremove -y || true
+        sudo apt autoclean -y || true
+        df -h
     - uses: cachix/install-nix-action@v30
+    - uses: cachix/cachix-action@v15
+      with:
+        name: hasktorch
+        signingKey: '${{ secrets.CACHIX_SIGNING_KEY }}'
     - run: nix build .
