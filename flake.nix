@@ -14,13 +14,17 @@
           inherit system;
           config.allowUnfree = true;
           config.cudaSupport = system == "x86_64-linux";
-          # config.ihaskell.packages = pkgs: with pkgs; [
-          #   hasktorch
-          # ];
+          config.ihaskell.packages = pkgs: with pkgs; [
+            hasktorch
+            HList
+            ihaskell-hvega
+          ];
+          config.allowBroken = true;
         };
         ghcWithHasktorch = pkgs.haskellPackages.ghcWithPackages (pkgs: with pkgs; [
           hasktorch
           haskell-language-server
+          HList
         ]);
       in {
         defaultPackage = pkgs.haskellPackages.callCabal2nix "hasktorch-skeleton" ./. {};
@@ -29,7 +33,8 @@
             ghcWithHasktorch
             cabal-install
             stack
-            # ihaskell
+            ihaskell
+            libtorch-bin
           ];
           shellHook = ''
             source ${git}/share/bash-completion/completions/git-prompt.sh
